@@ -32,6 +32,20 @@ portguard 3000
 
 See what's running on port 3000.
 
+### Scan port range
+
+```bash
+portguard --range 3000-4000
+```
+
+Scan a range of ports to see which are in use and which are free.
+
+```bash
+portguard -r 8000-8100
+```
+
+Short form also works.
+
 ### Kill process on port
 
 ```bash
@@ -270,7 +284,67 @@ Continue? [y/N]: y
 
 ---
 
-### Example 6: Port Conflict in Docker Development
+### Example 6: Finding Free Ports in a Range
+
+**Scenario:** Need to start multiple microservices but not sure which ports are available.
+
+```bash
+$ portguard --range 3000-3010
+
+📊 Port Range 3000-3010 Analysis:
+
+  Range:       3000 - 3010
+  Total ports: 11
+  Free ports:  7
+  Used ports:  4
+
+🔒 Active Ports in Range:
+
+PORT       PID        PROCESS              ADDRESS
+3000       45231      node                 *:3000
+3003       45892      python3              127.0.0.1:3003
+3007       46123      node                 *:3007
+3009       46201      ruby                 127.0.0.1:3009
+
+💡 Free ports: 3001, 3002, 3004, 3005, 3006, 3008, 3010
+```
+
+**Action:** Perfect! Use free ports for new services.
+
+```bash
+# Start services on free ports
+$ PORT=3001 npm run api-service &
+$ PORT=3002 npm run auth-service &
+$ PORT=3004 npm run notification-service &
+
+✓ All services started successfully
+```
+
+**Wide Range Scan:**
+
+```bash
+$ portguard -r 8000-8100
+
+📊 Port Range 8000-8100 Analysis:
+
+  Range:       8000 - 8100
+  Total ports: 101
+  Free ports:  98
+  Used ports:  3
+
+🔒 Active Ports in Range:
+
+PORT       PID        PROCESS              ADDRESS
+8000       12341      node                 *:8000
+8080       12389      node                 *:8080
+8081       12423      nginx                127.0.0.1:8081
+
+✓ 98 free ports available in this range
+```
+
+---
+
+### Example 7: Port Conflict in Docker Development
 
 **Scenario:** Docker container won't start — host port is in use.
 

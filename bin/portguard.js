@@ -5,10 +5,12 @@ import readline from 'readline';
 import {
   getActivePorts,
   getPortInfo,
+  getPortRange,
   killPort,
   cleanZombies,
   displayPorts,
-  displayPortInfo
+  displayPortInfo,
+  displayPortRange
 } from '../lib/portguard.js';
 
 const program = new Command();
@@ -21,8 +23,12 @@ program
 // Main command - show all ports
 program
   .argument('[port]', 'specific port to check')
-  .action(async (port) => {
-    if (port) {
+  .option('-r, --range <range>', 'scan port range (e.g., 3000-4000)')
+  .action(async (port, options) => {
+    if (options.range) {
+      // Scan port range
+      await handleRange(options.range);
+    } else if (port) {
       // Show specific port
       await handlePortCheck(port);
     } else {
@@ -80,6 +86,28 @@ async function handlePortCheck(port) {
   try {
     const processes = await getPortInfo(port);
     displayPortInfo(port, processes);
+  } catch (error) {
+    console.error(chalk.red('Error: ') + error.message);
+    process.exit(1);
+  }
+}
+
+/**
+ * Handle port range scanning
+ */
+async function handleRange(range) {
+  try {
+    // Parse range (e.g., "3000-4000")
+    const match = range.match(/^(\d+)-(\d+)$/);
+    
+    if (!match) {
+      console.error(chalk.red('Error: Invalid range format. Use: portguard --range 3000-4000'));
+      process.exit(1);
+    }
+    
+    const [, start, end] = match;
+    const rangeInfo = await getPortRange(start, end);
+    displayPortRange(rangeInfo);
   } catch (error) {
     console.error(chalk.red('Error: ') + error.message);
     process.exit(1);
