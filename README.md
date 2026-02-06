@@ -864,6 +864,725 @@ findAvailablePort(3000)
 
 ---
 
+## Kubernetes Integration Examples
+
+### Example 15: Debugging Kubernetes Port Conflicts
+
+**Scenario:** Pod won't start due to port conflict on node.
+
+```bash
+# Pod keeps crashing with "address already in use"
+$ kubectl logs my-app-7d9f8b-xk2m
+
+Error: listen EADDRINUSE: address already in use :::8080
+    at Server.setupListenHandle [as _listen2] (net.js:1318:16)
+
+# Check which process is using port 8080 on the node
+$ kubectl get pods -o wide
+NAME                     READY   STATUS    NODE
+my-app-7d9f8b-xk2m       0/1     CrashLoop node-1
+
+# SSH into the node
+$ kubectl debug node/node-1 -it --image=ubuntu
+
+# In the debug container
+root@node-1:/# apt-get update && apt-get install -y lsof
+root@node-1:/# lsof -i :8080
+
+COMMAND   PID     USER   FD   TYPE DEVICE SIZE/OFF NODE NAME
+node      12345   root   19u  IPv6  54321      0t0  TCP *:8080 (LISTEN)
+
+# This is a zombie process from a previous deployment!
+
+# Kill it
+root@node-1:/# kill 12345
+
+# Or use portguard if installed on node
+root@node-1:/# portguard kill 8080 -y
+
+✓ Killed process 12345 on port 8080
+
+# Exit debug container, pod should now start successfully
+```
+
+**Prevention - Use unique ports per deployment:**
+
+```yaml
+# deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: my-app
+spec:
+  template:
+    spec:
+      containers:
+      - name: app
+        image: myapp:latest
+        ports:
+        - containerPort: 8080
+          name: http
+        env:
+        - name: PORT
+          value: "8080"
+        # Add process cleanup on shutdown
+        lifecycle:
+          preStop:
+            exec:
+              command: ["/bin/sh", "-c", "sleep 5"]  # Grace period
+```
+
+---
+
+### Example 16: Kubernetes NodePort Service Conflicts
+
+**Scenario:** NodePort service fails to bind on some nodes.
+
+```bash
+$ kubectl get svc my-service
+NAME         TYPE       CLUSTER-IP      EXTERNAL-IP   PORT(S)          AGE
+my-service   NodePort   10.96.52.134    <none>        8080:30080/TCP   5m
+
+# Service created but some nodes can't bind to 30080
+$ kubectl get events | grep -i port
+
+Warning: FailedToAllocateNodePort: Port 30080 is already in use on node-2
+
+# Check which service is using the NodePort
+$ kubectl get svc --all-namespaces -o json | \
+  jq -r '.items[] | select(.spec.type=="NodePort") | "\(.metadata.namespace)/\(.metadata.name): \(.spec.ports[].nodePort)"'
+
+default/my-service: 30080
+monitoring/prometheus: 30080  ← Conflict!
+
+# Solution 1: Let Kubernetes assign port automatically
+$ kubectl delete svc my-service
+$ kubectl apply -f - <<EOF
+apiVersion: v1
+kind: Service
+metadata:
+  name: my-service
+spec:
+  type: NodePort
+  selector:
+    app: my-app
+  ports:
+  - port: 8080
+    targetPort: 8080
+    # nodePort: 30080  ← Remove this, let K8s assign
+EOF
+
+# Solution 2: Use specific port range
+# Check available NodePort range:
+$ kubectl cluster-info dump | grep -i service-node-port-range
+    - --service-node-port-range=30000-32767
+
+# Find free port in range:
+for port in {30000..30100}; do
+  if ! kubectl get svc --all-namespaces -o json | jq -e ".items[].spec.ports[]? | select(.nodePort==$port)" > /dev/null; then
+    echo "Port $port is free"
+    break
+  fi
+done
+```
+
+---
+
+### Example 17: Kubernetes Sidecar Port Conflicts
+
+**Scenario:** Multiple containers in pod competing for same port.
+
+```bash
+$ kubectl describe pod my-app-pod
+
+Events:
+  Warning  FailedPostStartHook  Container 'sidecar' failed to start: port 8080 already bound
+
+# The main container and sidecar both try to use port 8080!
+```
+
+**Fix - Proper port allocation:**
+
+```yaml
+# pod.yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: my-app-pod
+spec:
+  containers:
+  # Main application
+  - name: app
+    image: myapp:latest
+    ports:
+    - containerPort: 8080
+      name: http
+      protocol: TCP
+    env:
+    - name: PORT
+      value: "8080"
+  
+  # Sidecar (logging, metrics, etc.)
+  - name: sidecar
+    image: fluentd:latest
+    ports:
+    - containerPort: 24224  # Different port!
+      name: fluentd
+      protocol: TCP
+    env:
+    - name: FLUENTD_PORT
+      value: "24224"
+```
+
+**Port allocation best practices:**
+
+```yaml
+# Standard port assignments for multi-container pods
+# - Main app: 8080
+# - Metrics (Prometheus): 9090
+# - Health checks: 8081
+# - Admin/Debug: 8082
+# - Sidecar (Envoy): 15001, 15006
+# - Logging (Fluentd): 24224
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: production-app
+spec:
+  containers:
+  - name: app
+    ports:
+    - containerPort: 8080
+      name: http
+    - containerPort: 8081
+      name: health
+    - containerPort: 9090
+      name: metrics
+  
+  - name: envoy-sidecar
+    image: envoyproxy/envoy:latest
+    ports:
+    - containerPort: 15001
+      name: envoy-admin
+  
+  - name: fluentd
+    image: fluentd:latest
+    ports:
+    - containerPort: 24224
+      name: forward
+```
+
+---
+
+### Example 18: Kubernetes Ingress Port Debugging
+
+**Scenario:** Ingress controller not forwarding traffic correctly.
+
+```bash
+# Traffic not reaching your app through Ingress
+$ kubectl get ingress my-ingress
+NAME         CLASS   HOSTS              ADDRESS        PORTS   AGE
+my-ingress   nginx   app.example.com    192.168.1.10   80      5m
+
+# Check Ingress controller logs
+$ kubectl logs -n ingress-nginx deploy/ingress-nginx-controller | grep -i error
+
+Error: Service "default/my-service:8080" does not have any active endpoints
+
+# Check service and endpoints
+$ kubectl get svc my-service
+NAME         TYPE        CLUSTER-IP      PORT(S)    AGE
+my-service   ClusterIP   10.96.52.134    8080/TCP   10m
+
+$ kubectl get endpoints my-service
+NAME         ENDPOINTS   AGE
+my-service   <none>      10m
+
+# No endpoints! Check pod labels and service selector
+$ kubectl get pods --show-labels | grep my-app
+my-app-abc123   app=myapp,version=v1
+
+$ kubectl get svc my-service -o yaml | grep -A3 selector
+selector:
+  app: my-service  ← Wrong label!
+
+# Fix: Update service selector
+$ kubectl patch svc my-service -p '{"spec":{"selector":{"app":"myapp"}}}'
+
+# Verify endpoints now exist
+$ kubectl get endpoints my-service
+NAME         ENDPOINTS           AGE
+my-service   10.244.1.5:8080     1m
+
+# Test connection to pod directly
+$ kubectl run -it --rm debug --image=busybox --restart=Never -- \
+  wget -qO- http://10.244.1.5:8080
+
+# If that works, test service
+$ kubectl run -it --rm debug --image=busybox --restart=Never -- \
+  wget -qO- http://my-service:8080
+```
+
+---
+
+## Docker Integration Examples
+
+### Example 19: Docker Container Port Conflicts
+
+**Scenario:** Container won't start due to port already bound on host.
+
+```bash
+$ docker run -d -p 8080:8080 myapp:latest
+
+docker: Error response from daemon: driver failed programming external connectivity on endpoint myapp:
+Bind for 0.0.0.0:8080 failed: port is already allocated.
+
+# Find what's using port 8080
+$ portguard 8080
+
+🔍 Checking port 8080...
+
+PORT       PID        PROCESS              ADDRESS
+8080       45231      node                 *:8080
+
+Process details:
+  Local dev server still running
+
+# Option 1: Kill local process
+$ portguard kill 8080 -y
+
+# Option 2: Use different host port
+$ docker run -d -p 8081:8080 myapp:latest
+
+# Option 3: Let Docker assign random port
+$ docker run -d -p 8080 myapp:latest  # Host port auto-assigned
+$ docker ps
+CONTAINER ID   IMAGE          PORTS
+abc123         myapp:latest   0.0.0.0:32768->8080/tcp
+
+# Option 4: Find and remove conflicting container
+$ docker ps -a | grep 8080
+def456   nginx:latest   "nginx"   Up 2 hours   0.0.0.0:8080->80/tcp
+
+$ docker stop def456
+$ docker rm def456
+
+# Now start your container
+$ docker run -d -p 8080:8080 myapp:latest
+```
+
+**Helper script for automatic port conflict resolution:**
+
+```bash
+#!/bin/bash
+# docker-start-smart.sh - Auto-resolve port conflicts
+
+IMAGE=$1
+HOST_PORT=$2
+CONTAINER_PORT=$3
+
+if [ -z "$IMAGE" ] || [ -z "$HOST_PORT" ] || [ -z "$CONTAINER_PORT" ]; then
+  echo "Usage: ./docker-start-smart.sh <image> <host-port> <container-port>"
+  exit 1
+fi
+
+# Check if port is in use
+if portguard $HOST_PORT > /dev/null 2>&1; then
+  echo "⚠️  Port $HOST_PORT is in use"
+  
+  # Check if it's a Docker container
+  CONTAINER_ID=$(docker ps --filter "publish=$HOST_PORT" -q)
+  
+  if [ -n "$CONTAINER_ID" ]; then
+    echo "Found Docker container using port $HOST_PORT: $CONTAINER_ID"
+    read -p "Stop and remove container? (y/N): " -n 1 -r
+    echo
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+      docker stop $CONTAINER_ID
+      docker rm $CONTAINER_ID
+      echo "✓ Container removed"
+    else
+      echo "Aborting."
+      exit 1
+    fi
+  else
+    # It's a host process
+    portguard $HOST_PORT
+    read -p "Kill process using port $HOST_PORT? (y/N): " -n 1 -r
+    echo
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+      portguard kill $HOST_PORT -y
+    else
+      echo "Aborting."
+      exit 1
+    fi
+  fi
+fi
+
+# Start container
+echo "🚀 Starting container..."
+docker run -d -p $HOST_PORT:$CONTAINER_PORT $IMAGE
+
+echo "✓ Container started on port $HOST_PORT"
+docker ps | head -n 2
+```
+
+---
+
+### Example 20: Docker Compose Port Management
+
+**Scenario:** Multiple services in docker-compose fighting for ports.
+
+```bash
+$ docker-compose up
+ERROR: for db  Cannot start service db: driver failed programming external connectivity:
+Bind for 0.0.0.0:5432 failed: port is already allocated
+
+# Check what's using PostgreSQL port
+$ portguard 5432
+
+🔍 Checking port 5432...
+
+PORT       PID        PROCESS              ADDRESS
+5432       2341       postgres             127.0.0.1:5432
+
+Process details:
+  Homebrew PostgreSQL installation
+
+# Option 1: Stop local PostgreSQL
+$ brew services stop postgresql
+$ docker-compose up -d
+
+# Option 2: Change docker-compose port mapping
+# docker-compose.yml
+version: '3.8'
+services:
+  db:
+    image: postgres:15
+    ports:
+      - "5433:5432"  # Use different host port
+    environment:
+      POSTGRES_PASSWORD: secret
+
+# Update app config to use new port
+# .env
+DATABASE_URL=postgresql://localhost:5433/mydb
+
+$ docker-compose up -d
+
+# Option 3: Use host network mode (Linux only)
+# docker-compose.yml
+services:
+  api:
+    image: myapi:latest
+    network_mode: "host"
+    environment:
+      - PORT=8080
+    # No port mapping needed - uses host network
+
+# Option 4: Dynamic port allocation
+# docker-compose.yml
+services:
+  api:
+    image: myapi:latest
+    ports:
+      - "8080"  # Let Docker assign host port
+```
+
+**Helper: Find and kill Docker containers by port:**
+
+```bash
+#!/bin/bash
+# docker-kill-port.sh
+
+PORT=$1
+
+if [ -z "$PORT" ]; then
+  echo "Usage: ./docker-kill-port.sh <port>"
+  exit 1
+fi
+
+# Find containers using this port
+CONTAINERS=$(docker ps --format '{{.ID}}\t{{.Ports}}' | grep ":$PORT->" | cut -f1)
+
+if [ -z "$CONTAINERS" ]; then
+  echo "No Docker containers found using port $PORT"
+  
+  # Check host processes
+  portguard $PORT
+  exit 0
+fi
+
+echo "Found containers using port $PORT:"
+docker ps --filter "publish=$PORT" --format "table {{.ID}}\t{{.Names}}\t{{.Image}}\t{{.Ports}}"
+
+echo ""
+read -p "Stop and remove these containers? (y/N): " -n 1 -r
+echo
+
+if [[ $REPLY =~ ^[Yy]$ ]]; then
+  echo "$CONTAINERS" | while read container; do
+    echo "Stopping $container..."
+    docker stop $container
+    docker rm $container
+  done
+  echo "✓ Containers removed, port $PORT is now free"
+else
+  echo "Cancelled."
+fi
+```
+
+---
+
+### Example 21: Docker Network Port Isolation
+
+**Scenario:** Isolate services on different Docker networks.
+
+```bash
+# Create separate networks for different environments
+$ docker network create dev-network
+$ docker network create prod-network
+
+# Run services on same port but different networks
+$ docker run -d --name dev-api --network dev-network -p 8080:8080 myapi:dev
+$ docker run -d --name prod-api --network prod-network -p 8081:8080 myapi:prod
+
+# Services are isolated - can't communicate across networks
+$ docker exec dev-api curl http://prod-api:8080
+curl: (6) Could not resolve host: prod-api
+
+# Check port mappings
+$ docker ps --format "table {{.Names}}\t{{.Ports}}"
+NAMES       PORTS
+dev-api     0.0.0.0:8080->8080/tcp
+prod-api    0.0.0.0:8081->8080/tcp
+
+# Both use port 8080 internally, but mapped to different host ports
+```
+
+**docker-compose with network isolation:**
+
+```yaml
+# docker-compose.yml
+version: '3.8'
+
+networks:
+  frontend:
+    driver: bridge
+  backend:
+    driver: bridge
+
+services:
+  web:
+    image: nginx:latest
+    networks:
+      - frontend
+    ports:
+      - "80:80"
+  
+  api:
+    image: myapi:latest
+    networks:
+      - frontend  # Can talk to web
+      - backend   # Can talk to db
+    ports:
+      - "8080:8080"
+  
+  db:
+    image: postgres:15
+    networks:
+      - backend  # Isolated from web
+    ports:
+      - "5432"  # Not exposed to host
+```
+
+---
+
+### Example 22: Docker Health Checks with Port Monitoring
+
+**Scenario:** Ensure container is actually listening on expected port.
+
+```yaml
+# docker-compose.yml
+version: '3.8'
+
+services:
+  api:
+    image: myapi:latest
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "8080"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
+  
+  # Alternative healthcheck with curl
+  web:
+    image: nginx:latest
+    ports:
+      - "80:80"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+```
+
+**Check container health:**
+
+```bash
+$ docker ps
+CONTAINER ID   IMAGE          STATUS
+abc123         myapi:latest   Up 2 min (healthy)
+def456         nginx:latest   Up 5 min (unhealthy)
+
+# View health check logs
+$ docker inspect --format='{{json .State.Health}}' def456 | jq
+
+{
+  "Status": "unhealthy",
+  "FailingStreak": 3,
+  "Log": [
+    {
+      "ExitCode": 1,
+      "Output": "curl: (7) Failed to connect to localhost port 80"
+    }
+  ]
+}
+
+# Debug why port isn't accessible
+$ docker exec -it def456 sh
+
+# Inside container - check if process is listening
+$ netstat -tlnp | grep :80
+(nothing)
+
+# Process crashed or never started!
+$ ps aux | grep nginx
+(no nginx process)
+
+# Check logs
+$ docker logs def456
+Error: Configuration file not found: /etc/nginx/nginx.conf
+```
+
+---
+
+### Example 23: Docker Swarm Port Conflicts
+
+**Scenario:** Service fails to deploy in Docker Swarm due to port conflicts.
+
+```bash
+# Deploy service in Swarm
+$ docker service create \
+  --name my-service \
+  --publish published=8080,target=8080 \
+  --replicas 3 \
+  myapp:latest
+
+Error: port 8080 is already in use
+
+# Check existing services
+$ docker service ls
+ID             NAME           MODE         REPLICAS   PORTS
+abc123         old-service    replicated   2/2        *:8080->8080/tcp
+
+# Option 1: Remove old service
+$ docker service rm old-service
+
+# Option 2: Update to use different port
+$ docker service create \
+  --name my-service \
+  --publish published=8081,target=8080 \
+  --replicas 3 \
+  myapp:latest
+
+# Check service deployment across nodes
+$ docker service ps my-service
+ID             NAME              NODE      DESIRED STATE   CURRENT STATE
+xyz001         my-service.1      node-1    Running         Running 1 minute ago
+xyz002         my-service.2      node-2    Running         Running 1 minute ago
+xyz003         my-service.3      node-3    Running         Running 1 minute ago
+
+# Verify port is listening on all nodes
+$ for node in node-1 node-2 node-3; do
+    echo "Checking $node..."
+    docker node exec $node "portguard 8081"
+  done
+```
+
+---
+
+### Example 24: Container Port Range Scanning
+
+**Scenario:** Find which containers are using ports in a specific range.
+
+```bash
+#!/bin/bash
+# docker-port-scan.sh - Scan Docker containers for port usage
+
+START_PORT=${1:-3000}
+END_PORT=${2:-4000}
+
+echo "🔍 Scanning Docker containers for ports $START_PORT-$END_PORT..."
+echo ""
+
+# Get all running containers
+CONTAINERS=$(docker ps -q)
+
+if [ -z "$CONTAINERS" ]; then
+  echo "No running containers"
+  exit 0
+fi
+
+# Check each port in range
+for port in $(seq $START_PORT $END_PORT); do
+  # Find containers publishing this port
+  RESULT=$(docker ps --format '{{.ID}}\t{{.Names}}\t{{.Ports}}' | grep ":$port->")
+  
+  if [ -n "$RESULT" ]; then
+    echo "📍 Port $port:"
+    echo "$RESULT" | awk -F'\t' '{printf "   Container: %s (%s)\n   Ports: %s\n\n", $2, $1, $3}'
+  fi
+done
+
+# Summary
+echo ""
+echo "📊 Summary:"
+docker ps --format "table {{.Names}}\t{{.Ports}}" | grep -E ":[0-9]+->"
+```
+
+**Usage:**
+
+```bash
+$ ./docker-port-scan.sh 8000 8100
+
+🔍 Scanning Docker containers for ports 8000-8100...
+
+📍 Port 8080:
+   Container: api-server (abc123)
+   Ports: 0.0.0.0:8080->8080/tcp
+
+📍 Port 8081:
+   Container: admin-panel (def456)
+   Ports: 0.0.0.0:8081->3000/tcp
+
+📍 Port 8082:
+   Container: metrics (ghi789)
+   Ports: 0.0.0.0:8082->9090/tcp
+
+📊 Summary:
+NAMES         PORTS
+api-server    0.0.0.0:8080->8080/tcp
+admin-panel   0.0.0.0:8081->3000/tcp
+metrics       0.0.0.0:8082->9090/tcp
+```
+
+---
+
 ### Example 15: Team Onboarding Port Setup
 
 **Scenario:** New developer joins team, needs to set up standard port configuration.
