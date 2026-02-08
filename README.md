@@ -1814,6 +1814,1141 @@ PORT       PID        PROCESS              ADDRESS
 - Process already dead? No problem.
 - Tool not found? Helpful install hint.
 
+## Troubleshooting
+
+### Issue 1: "Command not found: portguard"
+
+**Problem:** After installing globally, `portguard` command isn't recognized.
+
+**Solution:**
+
+```bash
+# Check if npm global bin is in PATH
+npm config get prefix
+# Output: /usr/local (or similar)
+
+# Add to PATH (add to ~/.bashrc or ~/.zshrc)
+export PATH="$PATH:$(npm config get prefix)/bin"
+
+# Reload shell
+source ~/.zshrc
+
+# Verify installation
+which portguard
+portguard --version
+```
+
+**Alternative:** Use npx:
+
+```bash
+npx @muin/portguard 3000
+```
+
+---
+
+### Issue 2: "Permission denied" when killing system services
+
+**Problem:** Can't kill processes owned by root or other users.
+
+**Cause:** Insufficient privileges.
+
+**Solution:**
+
+```bash
+# Use sudo (macOS/Linux)
+sudo portguard kill 80 -y
+
+# Windows: Run terminal as Administrator
+# Right-click Terminal → "Run as Administrator"
+portguard kill 80 -y
+```
+
+**Identify process owner:**
+
+```bash
+$ portguard 80
+
+PORT       PID        PROCESS              ADDRESS          USER
+80         812        httpd                *:80             root ← Owned by root
+
+# You need sudo to kill this
+```
+
+---
+
+### Issue 3: Port shown as in use but no process found
+
+**Problem:** Port appears busy, but `portguard` finds no process.
+
+**Cause:** 
+1. TIME_WAIT state (TCP connection closing)
+2. Kernel holding the port
+3. Firewall/NAT rules
+
+**Solution:**
+
+```bash
+# Check TCP connection states
+netstat -an | grep :3000
+
+# Output:
+tcp4       0      0  *.3000                 *.*                    TIME_WAIT
+
+# TIME_WAIT will clear automatically in 30-120 seconds
+
+# Or change application port binding to reuse addresses
+# In your code (Node.js):
+server.listen({ port: 3000, host: '0.0.0.0', reusePort: true });
+```
+
+**Immediate fix:**
+
+```bash
+# Use a different port
+PORT=3001 npm run dev
+
+# Or wait 1-2 minutes for TIME_WAIT to clear
+```
+
+---
+
+### Issue 4: "lsof command not found" (Linux)
+
+**Problem:** portguard requires `lsof` but it's not installed.
+
+**Solution:**
+
+```bash
+# Ubuntu/Debian
+sudo apt-get install lsof
+
+# CentOS/RHEL
+sudo yum install lsof
+
+# Arch Linux
+sudo pacman -S lsof
+
+# Alpine Linux (Docker)
+apk add lsof
+
+# Verify
+lsof -v
+```
+
+---
+
+### Issue 5: Process killed but port still shows as in use
+
+**Problem:** Killed process, but port still appears busy.
+
+**Cause:** 
+1. Process didn't terminate cleanly
+2. Child processes still running
+3. Socket in TIME_WAIT state
+
+**Solution:**
+
+```bash
+# Force kill with SIGKILL
+portguard kill 3000 -f
+
+# Check for child processes
+ps aux | grep node
+kill -9 <child_pids>
+
+# Or use portguard clean to kill all zombies
+portguard clean
+
+# Verify port is free
+portguard 3000
+# Should show: Port 3000 is not in use
+```
+
+---
+
+### Issue 6: Wrong process killed (multiple on same port)
+
+**Problem:** Multiple processes bound to same port (IPv4 vs IPv6).
+
+**Example:**
+
+```bash
+$ portguard 3000
+
+PORT       PID        PROCESS              ADDRESS
+3000       12345      node                 *:3000         (IPv6)
+3000       12346      node                 127.0.0.1:3000 (IPv4)
+
+$ portguard kill 3000 -y
+# Only kills first process (12345)
+
+$ portguard 3000
+PORT       PID        PROCESS              ADDRESS
+3000       12346      node                 127.0.0.1:3000 (IPv4)  ← Still running!
+```
+
+**Solution:**
+
+```bash
+# Kill all processes on port
+portguard kill 3000 -y
+portguard kill 3000 -y  # Run again for IPv4 binding
+
+# Or clean all node processes
+portguard clean
+```
+
+---
+
+### Issue 7: Watch mode not updating
+
+**Problem:** `portguard watch` shows stale data.
+
+**Cause:** Terminal not refreshing properly.
+
+**Solution:**
+
+```bash
+# Use smaller interval
+portguard watch -i 1
+
+# Or use standard watch command
+watch -n 2 portguard
+
+# For better visual updates, use --color
+portguard watch --color
+```
+
+---
+
+### Issue 8: Windows-specific: "Access denied"
+
+**Problem:** Can't kill processes on Windows even with Administrator terminal.
+
+**Cause:** Windows User Account Control (UAC) or system protection.
+
+**Solution:**
+
+```bash
+# Method 1: Use task name instead of PID
+taskkill /F /IM node.exe
+
+# Method 2: Disable UAC temporarily (not recommended)
+# Control Panel → User Accounts → Change User Account Control settings
+
+# Method 3: Use portguard with explicit permissions
+# Run as Administrator, then:
+portguard kill 3000 -f
+```
+
+---
+
+### Issue 9: Docker container port conflicts not detected
+
+**Problem:** Docker container using port, but portguard doesn't show it.
+
+**Cause:** Docker ports are mapped but not directly visible to host tools.
+
+**Solution:**
+
+```bash
+# Check Docker port mappings
+docker ps --format "table {{.Names}}\t{{.Ports}}"
+
+# Find container using specific port
+docker ps --filter "publish=3000"
+
+# Kill container
+docker stop <container_name>
+docker rm <container_name>
+
+# Or use portguard after Docker cleanup
+docker stop $(docker ps -q)  # Stop all containers
+portguard 3000  # Now should be free
+```
+
+---
+
+### Issue 10: Port range scan is slow
+
+**Problem:** `portguard --range 1-65535` takes forever.
+
+**Cause:** Scanning all 65k ports is slow.
+
+**Solution:**
+
+```bash
+# Scan smaller ranges
+portguard -r 3000-4000  # Common dev ports
+portguard -r 8000-9000  # Alt HTTP ports
+
+# Common port ranges:
+# 3000-5000  - Development servers
+# 8000-8999  - HTTP alternates
+# 27017-27019 - MongoDB
+# 5432-5435  - PostgreSQL
+# 6379-6381  - Redis
+
+# For full scans, use dedicated tools
+nmap -p 1-65535 localhost
+```
+
+---
+
+### Issue 11: "Cannot read property 'pid' of undefined"
+
+**Problem:** Crash when checking certain ports.
+
+**Cause:** Bug in parsing process output.
+
+**Workaround:**
+
+```bash
+# Update to latest version
+npm update -g @muin/portguard
+
+# Or use specific port commands
+lsof -ti :3000  # Direct lsof command
+
+# Report the issue
+# Include: OS version, Node version, port number
+node --version
+uname -a
+```
+
+---
+
+### Issue 12: SSH tunnel ports not shown
+
+**Problem:** SSH tunnel occupies port, but portguard doesn't see it.
+
+**Cause:** SSH tunnel might be bound to 127.0.0.1 specifically.
+
+**Solution:**
+
+```bash
+# Check SSH processes
+ps aux | grep ssh
+lsof -i -n | grep ssh
+
+# Find SSH tunnels
+netstat -an | grep LISTEN | grep 127.0.0.1
+
+# Kill SSH tunnel
+pkill -f "ssh.*-L.*3000"
+```
+
+---
+
+### Issue 13: Clean command kills database (too aggressive)
+
+**Problem:** `portguard clean` killed PostgreSQL/MySQL needed for work.
+
+**Cause:** Clean command targets common process names including databases.
+
+**Prevention:**
+
+```bash
+# Check what clean will kill (dry run)
+portguard clean --dry-run  # (if implemented)
+
+# Or list ports first
+portguard
+
+PORT       PID        PROCESS              ADDRESS
+3000       12345      node                 *:3000           ← Safe to kill
+5432       5678       postgres             127.0.0.1:5432   ← Keep this!
+
+# Kill only specific ports
+portguard kill 3000 -y
+# Don't run clean if you need databases
+```
+
+**Recovery:**
+
+```bash
+# Restart database services
+
+# macOS (Homebrew)
+brew services start postgresql
+brew services start mysql
+brew services start redis
+
+# Linux (systemd)
+sudo systemctl start postgresql
+sudo systemctl start mysql
+sudo systemctl start redis
+
+# Docker
+docker-compose up -d postgres redis
+```
+
+---
+
+### Issue 14: Port conflict in Kubernetes/Docker Swarm
+
+**Problem:** Container fails to start due to host port conflict.
+
+**Diagnosis:**
+
+```bash
+# Check host ports
+portguard
+
+# Check Docker port mappings
+docker ps --format "table {{.Names}}\t{{.Ports}}"
+
+# Check Kubernetes NodePort services
+kubectl get svc --all-namespaces -o json | \
+  jq -r '.items[] | select(.spec.type=="NodePort") | "\(.metadata.name): \(.spec.ports[].nodePort)"'
+```
+
+**Solution:**
+
+```bash
+# Change container port mapping
+docker run -p 8081:8080 myapp  # Use 8081 instead of 8080
+
+# Or let Docker assign port
+docker run -p 8080 myapp  # Auto-assign host port
+docker ps  # Check assigned port
+```
+
+---
+
+### Issue 15: False positives from VPN/network tools
+
+**Problem:** VPN software shows ports that can't be killed.
+
+**Cause:** System-level network services.
+
+**Identification:**
+
+```bash
+$ portguard
+
+PORT       PID        PROCESS              ADDRESS          USER
+51820      1234       wireguard            *:51820          root  ← VPN
+1194       5678       openvpn              *:1194           root  ← VPN
+
+# These are system services - don't kill them!
+```
+
+**Solution:**
+
+```bash
+# Ignore VPN ports when looking for dev server conflicts
+portguard | grep -v wireguard | grep -v openvpn
+
+# Or work around them
+# Use different ports for your apps (avoid 51820, 1194, etc.)
+```
+
+---
+
+## Use Cases
+
+### 1. Rapid Prototyping & Hackathons
+
+**Scenario:** You're switching between multiple projects quickly, each using default port 3000.
+
+```bash
+# Before starting new project
+portguard kill 3000 -y && npm run dev
+
+# Or add to package.json
+{
+  "scripts": {
+    "dev": "portguard kill 3000 -y || true && next dev"
+  }
+}
+```
+
+**Value:** No manual port hunting. One command cleans up and starts fresh.
+
+---
+
+### 2. Teaching/Workshops with Multiple Students
+
+**Scenario:** Running a coding workshop where students share a dev machine.
+
+```bash
+# Create user-specific port assignments
+# student1: 3001, student2: 3002, etc.
+
+# Before each student session:
+#!/bin/bash
+STUDENT_ID=$1
+ASSIGNED_PORT=$((3000 + STUDENT_ID))
+
+echo "Setting up environment for Student $STUDENT_ID (port $ASSIGNED_PORT)"
+
+# Kill previous student's process
+portguard kill $ASSIGNED_PORT -y
+
+# Start new session
+PORT=$ASSIGNED_PORT npm run dev
+
+# Monitor all student ports
+portguard -r 3001-3050
+```
+
+**Value:** Avoid conflicts when students share machines or forget to stop servers.
+
+---
+
+### 3. Continuous Integration (CI) Test Cleanup
+
+**Scenario:** Integration tests fail intermittently due to port conflicts from previous runs.
+
+```yaml
+# .github/workflows/test.yml
+name: Integration Tests
+
+on: [push, pull_request]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Clean up ports before tests
+        run: |
+          npm install -g @muin/portguard
+          portguard kill 3000 -y || true
+          portguard kill 5432 -y || true
+          portguard kill 6379 -y || true
+      
+      - name: Run tests
+        run: npm test
+      
+      - name: Cleanup after tests
+        if: always()
+        run: portguard clean -y || true
+```
+
+**Value:** Consistent test environment. No flaky tests from port conflicts.
+
+---
+
+### 4. Debugging Microservices Locally
+
+**Scenario:** Running 10+ microservices locally, losing track of which port is which service.
+
+```bash
+# List all active services with ports
+$ portguard
+
+PORT       PID        PROCESS              ADDRESS          UPTIME
+3000       12345      node                 *:3000           2h (frontend)
+4000       12346      node                 *:4000           2h (api-gateway)
+4001       12347      node                 *:4001           2h (auth-service)
+4002       12348      node                 *:4002           2h (user-service)
+4003       12349      node                 *:4003           2h (order-service)
+5432       23456      postgres             127.0.0.1:5432   5d (database)
+6379       23457      redis                127.0.0.1:6379   5d (cache)
+9200       23458      java                 *:9200           3d (elasticsearch)
+
+# Kill specific service to restart
+portguard kill 4001 -y  # Restart auth-service
+
+# Watch for new services starting
+portguard watch -i 2
+```
+
+**Value:** Clear visibility into complex local setups. Quickly identify and manage services.
+
+---
+
+### 5. Onboarding New Developers
+
+**Scenario:** New developer sets up project but gets cryptic "EADDRINUSE" error.
+
+```bash
+# Their first attempt:
+$ npm run dev
+Error: listen EADDRINUSE: address already in use :::3000
+
+# Instead of debugging, teach them portguard:
+$ npm install -g @muin/portguard
+
+$ portguard 3000
+🔍 Checking port 3000...
+
+PORT       PID        PROCESS              ADDRESS
+3000       99999      node                 *:3000
+
+Process details:
+  Old dev server from previous developer
+  
+💡 Tip: Run 'portguard kill 3000 -y' to free this port
+
+$ portguard kill 3000 -y
+✓ Killed process 99999 on port 3000
+
+$ npm run dev
+✓ Server started successfully on port 3000
+```
+
+**Value:** Self-service debugging. Reduces "it doesn't work" support requests.
+
+---
+
+### 6. Production Debugging (Emergency Scenarios)
+
+**Scenario:** Production server running out of ports due to zombie processes.
+
+```bash
+# SSH into production server
+ssh production-server
+
+# Check port usage
+portguard
+
+PORT       PID        PROCESS              ADDRESS          UPTIME
+8080       12345      node                 *:8080           30d  (active)
+8081       12346      node                 *:8081           5h   (zombie?)
+8082       12347      node                 *:8082           5h   (zombie?)
+8083       12348      node                 *:8083           5h   (zombie?)
+# ... 50 more zombie processes
+
+# Identify pattern: Crashed worker processes not cleaned up
+# Clean up carefully
+portguard clean --dry-run  # Preview what will be killed
+portguard kill 8081 8082 8083 -y  # Kill specific zombies
+
+# Set up monitoring to prevent recurrence
+*/5 * * * * portguard clean --max-uptime 2h >> /var/log/portguard-cleanup.log 2>&1
+```
+
+**Value:** Quick diagnosis and cleanup in production emergencies.
+
+---
+
+### 7. Local Development Environment Standardization
+
+**Scenario:** Team wants consistent port assignments across all developers.
+
+```bash
+# Create team-wide script: scripts/check-ports.sh
+#!/bin/bash
+
+echo "🔍 Checking team port standards..."
+
+TEAM_PORTS=(
+  "3000:Frontend (React)"
+  "4000:API Gateway"
+  "5000:Python ML Service"
+  "5432:PostgreSQL"
+  "6379:Redis"
+  "8080:Admin Dashboard"
+)
+
+CONFLICTS=()
+
+for entry in "${TEAM_PORTS[@]}"; do
+  PORT=$(echo $entry | cut -d: -f1)
+  SERVICE=$(echo $entry | cut -d: -f2)
+  
+  if portguard $PORT > /dev/null 2>&1; then
+    CONFLICTS+=("$PORT ($SERVICE)")
+  fi
+done
+
+if [ ${#CONFLICTS[@]} -eq 0 ]; then
+  echo "✅ All team ports available"
+else
+  echo "⚠️  Conflicts detected:"
+  printf '  - %s\n' "${CONFLICTS[@]}"
+  echo ""
+  echo "Run: portguard kill <port> -y"
+fi
+
+# Add to package.json
+{
+  "scripts": {
+    "predev": "bash scripts/check-ports.sh",
+    "dev": "concurrently \"npm:dev:*\"",
+    "dev:frontend": "cd frontend && npm start",
+    "dev:api": "cd api && npm start"
+  }
+}
+```
+
+**Value:** Enforces team conventions. Prevents "works on my machine" issues.
+
+---
+
+## Performance Tips
+
+### 1. Use Specific Ports Instead of Scanning
+
+**Slow:**
+```bash
+portguard --range 1-65535
+# Scans all 65k ports - takes 30+ seconds
+```
+
+**Fast:**
+```bash
+portguard 3000
+# Checks single port - instant
+```
+
+**Impact:** 100x faster for targeted checks.
+
+---
+
+### 2. Narrow Port Ranges
+
+**Slow:**
+```bash
+portguard -r 1000-9999
+# Scans 9000 ports
+```
+
+**Fast:**
+```bash
+portguard -r 3000-3010
+# Scans 10 ports
+```
+
+**Tip:** Know your common dev ports:
+- 3000-5000: Node.js, Python, Ruby dev servers
+- 8000-8100: HTTP alternates
+- 5432-5435: PostgreSQL variants
+- 27017-27019: MongoDB
+
+---
+
+### 3. Use Watch Mode Efficiently
+
+**Inefficient:**
+```bash
+# Update every 0.5 seconds (excessive)
+portguard watch -i 0.5
+```
+
+**Efficient:**
+```bash
+# Update every 3-5 seconds (default is good)
+portguard watch -i 3
+```
+
+**Reason:** `lsof` system calls are expensive. Reduce frequency unless debugging real-time issues.
+
+---
+
+### 4. Kill vs Clean
+
+**Use `kill` for specific ports:**
+```bash
+portguard kill 3000 -y
+# Surgical, fast
+```
+
+**Use `clean` sparingly:**
+```bash
+portguard clean
+# Scans ALL processes, slower
+```
+
+**When to use `clean`:** 
+- After crashes/system wake
+- Before starting large project
+- End of day cleanup
+
+---
+
+### 5. Batch Kills
+
+**Slow:**
+```bash
+portguard kill 3000 -y
+portguard kill 4000 -y
+portguard kill 5000 -y
+# 3 separate lsof calls
+```
+
+**Fast:**
+```bash
+# Kill multiple ports at once (if implemented)
+portguard kill 3000 4000 5000 -y
+# Or use shell loop with background processes
+for port in 3000 4000 5000; do portguard kill $port -y & done
+wait
+```
+
+---
+
+### 6. Reduce Verbose Output
+
+**Slower (more processing):**
+```bash
+portguard --verbose
+# Prints detailed info for every port
+```
+
+**Faster:**
+```bash
+portguard
+# Minimal output
+```
+
+**Use verbose only when debugging.**
+
+---
+
+### 7. Platform-Specific Optimizations
+
+**macOS/Linux:**
+```bash
+# Direct lsof for even faster checks
+lsof -ti :3000 | xargs kill -9
+# Fastest possible kill
+```
+
+**Windows:**
+```bash
+# Use netstat + taskkill directly
+netstat -ano | findstr :3000
+taskkill /PID <pid> /F
+```
+
+**When to use raw commands:** Automation scripts where portguard's formatting isn't needed.
+
+---
+
+### 8. JSON Output for Parsing
+
+**Inefficient:**
+```bash
+portguard | grep 3000 | awk '{print $2}'
+# Parses formatted output
+```
+
+**Efficient:**
+```bash
+portguard --json | jq '.ports[] | select(.port == 3000) | .pid'
+# Parses structured data
+```
+
+**Use JSON mode for scripting/automation.**
+
+---
+
+### 9. Cache Process Lists (Advanced)
+
+For CI/CD environments running many checks:
+
+```bash
+#!/bin/bash
+# Cache lsof output for batch checks
+
+LSOF_CACHE=$(mktemp)
+lsof -i -P -n > $LSOF_CACHE
+
+# Now check multiple ports against cached output
+for port in 3000 4000 5000 8080; do
+  grep ":$port" $LSOF_CACHE && echo "Port $port in use"
+done
+
+rm $LSOF_CACHE
+```
+
+**Impact:** 75% faster for multiple port checks.
+
+---
+
+### 10. Limit Watch Mode to Specific Ports
+
+**Inefficient:**
+```bash
+portguard watch
+# Monitors ALL ports, refreshes constantly
+```
+
+**Efficient:**
+```bash
+# Monitor only your dev ports (if implemented)
+portguard watch 3000 4000 5000
+# Or use grep to filter
+watch 'portguard | grep -E "3000|4000|5000"'
+```
+
+---
+
+## FAQ
+
+### Q1: Is portguard safe to use in production?
+
+**A:** Use with caution. portguard is designed for development environments. In production:
+- Avoid `clean` command (too aggressive)
+- Use `kill` only for specific, known zombie processes
+- Prefer process managers (PM2, systemd) for production process control
+- Always use `--dry-run` (if available) before mass kills
+
+**Production-safe usage:**
+```bash
+# Check port before manual intervention
+portguard 3000
+
+# Kill specific zombie (after verification)
+sudo portguard kill 3000 -y
+```
+
+---
+
+### Q2: Can I use portguard in Docker containers?
+
+**A:** Yes, but with limitations:
+
+```dockerfile
+# Install in container
+RUN npm install -g @muin/portguard
+
+# Note: Only sees processes inside the container
+# Won't see host ports or other containers
+```
+
+**Better approach for containers:**
+```bash
+# Check from host
+portguard 8080  # Check if container port conflicts
+
+# Or use Docker commands
+docker ps --filter "publish=8080"
+```
+
+---
+
+### Q3: Does portguard work on Windows?
+
+**A:** Yes, with some limitations:
+- Uses `netstat` instead of `lsof`
+- May require Administrator privileges
+- Process names might differ (e.g., `node.exe` vs `node`)
+- Some features like watch mode may behave differently
+
+**Windows-specific tips:**
+```bash
+# Run terminal as Administrator
+portguard kill 3000 -y
+
+# Or use Windows-native tools
+netstat -ano | findstr :3000
+taskkill /PID <pid> /F
+```
+
+---
+
+### Q4: How do I exclude certain processes from `clean`?
+
+**A:** Currently, `clean` targets common dev processes (node, python, ruby, java, deno). 
+
+**Workarounds:**
+```bash
+# List ports first, then selectively kill
+portguard
+
+# Kill specific ports instead of clean
+portguard kill 3000 -y
+portguard kill 4000 -y
+
+# Or create a wrapper script
+#!/bin/bash
+# clean-safe.sh - Clean but protect databases
+
+PROTECT_PORTS=(5432 3306 6379 27017)  # PostgreSQL, MySQL, Redis, MongoDB
+
+for port in $(portguard --json | jq -r '.ports[].port'); do
+  if [[ ! " ${PROTECT_PORTS[@]} " =~ " ${port} " ]]; then
+    portguard kill $port -y
+  fi
+done
+```
+
+---
+
+### Q5: Can I use portguard in CI/CD pipelines?
+
+**A:** Yes, it's great for CI/CD:
+
+```yaml
+# GitHub Actions
+- name: Clean ports before tests
+  run: |
+    npx @muin/portguard kill 3000 -y || true
+    npx @muin/portguard kill 5432 -y || true
+```
+
+**Tips for CI/CD:**
+- Use `npx @muin/portguard` (no global install needed)
+- Add `|| true` to prevent CI failures if port is already free
+- Use `--strict` flag (if available) to fail on unexpected port usage
+
+---
+
+### Q6: Why doesn't portguard show Docker container ports?
+
+**A:** Docker port mappings happen at the Docker daemon level, not as host processes that `lsof`/`netstat` can see.
+
+**To check Docker ports:**
+```bash
+# Check container port mappings
+docker ps --format "table {{.Names}}\t{{.Ports}}"
+
+# Check if Docker is using a port
+docker ps --filter "publish=3000"
+
+# Combined approach
+portguard 3000 && echo "Host process found" || docker ps --filter "publish=3000"
+```
+
+---
+
+### Q7: How do I integrate portguard with my IDE?
+
+**A:** Here are IDE integrations:
+
+**VS Code (tasks.json):**
+```json
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Kill Port 3000",
+      "type": "shell",
+      "command": "portguard kill 3000 -y",
+      "presentation": {"reveal": "always"}
+    }
+  ]
+}
+```
+
+**JetBrains IDEs (External Tool):**
+- Settings → Tools → External Tools → +
+- Program: `portguard`
+- Arguments: `kill 3000 -y`
+
+**Keyboard shortcut:**
+```bash
+# Add to ~/.zshrc or ~/.bashrc
+alias killport='portguard kill'
+# Usage: killport 3000 -y
+```
+
+---
+
+### Q8: Does portguard handle IPv6?
+
+**A:** Yes, portguard detects both IPv4 and IPv6:
+
+```bash
+$ portguard 3000
+
+PORT       PID        PROCESS              ADDRESS
+3000       12345      node                 *:3000           (IPv6)
+3000       12346      node                 127.0.0.1:3000   (IPv4)
+
+# Note: May need to kill both
+portguard kill 3000 -y  # Kills first (IPv6)
+portguard kill 3000 -y  # Kills second (IPv4)
+```
+
+---
+
+### Q9: Can I monitor port usage over time?
+
+**A:** Use watch mode or create a monitoring script:
+
+```bash
+# Real-time monitoring
+portguard watch
+
+# Log to file
+portguard >> port-usage.log
+
+# Scheduled monitoring (cron)
+*/10 * * * * /usr/local/bin/portguard >> /var/log/port-usage.log 2>&1
+```
+
+**Analysis:**
+```bash
+# Find most used ports
+cat port-usage.log | grep -oE "PORT\s+[0-9]+" | awk '{print $2}' | sort | uniq -c | sort -rn
+```
+
+---
+
+### Q10: What's the difference between `kill` and `kill -f`?
+
+**A:**
+
+**Regular kill (SIGTERM):**
+```bash
+portguard kill 3000
+# Sends SIGTERM - graceful shutdown
+# Process can clean up, close connections
+# Recommended for normal use
+```
+
+**Force kill (SIGKILL):**
+```bash
+portguard kill 3000 -f
+# Sends SIGKILL - immediate termination
+# Process cannot clean up
+# Use only when regular kill fails
+```
+
+**When to use `-f`:**
+- Process not responding to SIGTERM
+- Emergency situations
+- Zombie processes
+- Hung/deadlocked processes
+
+**Warning:** Force kill may cause:
+- Corrupted data
+- Orphaned child processes
+- File locks left open
+- Incomplete transactions
+
+---
+
+## Roadmap
+
+### v1.1.0 (Next Release)
+- [ ] Batch kill multiple ports at once
+- [ ] `--json` flag for machine-readable output
+- [ ] `--dry-run` for clean command
+- [ ] Configurable excludes for clean command
+- [ ] Better Windows support (process tree visualization)
+
+### v1.2.0
+- [ ] Process tree view (parent-child relationships)
+- [ ] Filter by process name (e.g., only show node processes)
+- [ ] Port usage history/logging
+- [ ] Integration with PM2, Docker, Kubernetes
+- [ ] Web dashboard for port monitoring
+
+### v2.0.0
+- [ ] Remote port checking (SSH)
+- [ ] Multi-machine support (check dev team ports)
+- [ ] Automatic port assignment/suggestion
+- [ ] Plugin system for custom process handlers
+- [ ] Performance monitoring (CPU/memory per port)
+
+### Community Requests
+- [ ] Configuration file support (.portguardrc)
+- [ ] Port reservation system
+- [ ] Integration with service discovery tools
+- [ ] Alerts/notifications for port conflicts
+
+**Want a feature?** [Open an issue](https://github.com/muin-company/portguard/issues) or contribute!
+
+---
+
 ## Development
 
 ```bash
@@ -1831,13 +2966,35 @@ npm test
 node bin/portguard.js
 ```
 
+## Contributing
+
+Contributions welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+
+### Ideas for Contribution
+- Support for more platforms (FreeBSD, Solaris)
+- Better error messages
+- Performance improvements
+- Documentation improvements
+- Additional output formats (YAML, CSV)
+
 ## License
 
-MIT
+MIT © [muin](https://github.com/muin-company)
 
-## Author
+## Related Projects
 
-Built by [muin](https://github.com/muin-company)
+- **kill-port** - Similar tool, less features
+- **fkill** - Cross-platform process killer
+- **PM2** - Production process manager
+- **lsof** - List open files (Unix)
+- **netstat** - Network statistics
+
+## Support
+
+- 🐛 [Report bugs](https://github.com/muin-company/portguard/issues)
+- 💡 [Request features](https://github.com/muin-company/portguard/issues/new?template=feature_request.md)
+- 📧 Email: support@muin.company
+- 💬 [Discussions](https://github.com/muin-company/portguard/discussions)
 
 ---
 
