@@ -1,6 +1,6 @@
 {
-  "name": "@muin/portguard",
-  "version": "0.1.0",
+  "name": "@mj-muin/portguard",
+  "version": "0.1.1",
   "description": "Monitor and manage localhost ports - kill zombie processes and prevent port conflicts",
   "main": "lib/portguard.js",
   "bin": {
@@ -17,8 +17,16 @@
     "cli",
     "developer-tools"
   ],
+  "homepage": "https://github.com/muin-company/portguard#readme",
   "author": "muin",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/muin-company/portguard.git"
+  },
+  "bugs": {
+    "url": "https://github.com/muin-company/portguard/issues"
+  },
   "engines": {
     "node": ">=18.0.0"
   },
