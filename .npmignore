@@ -1,0 +1,16 @@
+# Development files
+*.log
+*.tgz
+node_modules/
+.git/
+.DS_Store
+
+# GitHub files
+.github/
+
+# Test files
+test/
+
+# Build artifacts
+coverage/
+.nyc_output/
