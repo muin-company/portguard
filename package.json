@@ -1,5 +1,5 @@
 {
-  "name": "@mj-muin/portguard",
+  "name": "portguard",
   "version": "0.1.1",
   "description": "Monitor and manage localhost ports - kill zombie processes and prevent port conflicts",
   "main": "lib/portguard.js",
@@ -15,7 +15,20 @@
     "process",
     "monitor",
     "cli",
-    "developer-tools"
+    "developer-tools",
+    "kill-port",
+    "eaddrinuse",
+    "lsof",
+    "zombie",
+    "devtools",
+    "port-scanner",
+    "port-killer",
+    "network",
+    "tcp",
+    "port-conflict",
+    "port-management",
+    "process-manager",
+    "cleanup"
   ],
   "homepage": "https://github.com/muin-company/portguard#readme",
   "author": "muin",
