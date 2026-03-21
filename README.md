@@ -1,12 +1,25 @@
-# portguard
+<div align="center">
+
+# 🔒 portguard
 
 **Who's stealing your ports? portguard knows.**
 
-[![npm version](https://badge.fury.io/js/portguard.svg)](https://www.npmjs.com/package/portguard)
+[![npm version](https://img.shields.io/npm/v/portguard?color=green&label=npm)](https://www.npmjs.com/package/portguard)
 [![npm downloads](https://img.shields.io/npm/dm/portguard.svg)](https://www.npmjs.com/package/portguard)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Node.js Version](https://img.shields.io/node/v/portguard.svg)](https://nodejs.org)
-[![GitHub stars](https://img.shields.io/github/stars/muin-company/portguard.svg?style=social)](https://github.com/muin-company/portguard)
+
+<br/>
+
+```bash
+npx portguard
+```
+
+*List, kill, and guard localhost ports. No more `lsof` gymnastics.*
+
+</div>
+
+---
 
 ## The Problem
 
@@ -187,8 +200,14 @@ System processes (root-owned) require `sudo portguard kill <port>`.
 
 ## License
 
-MIT © [muin](https://github.com/muin-company)
+MIT © [MUIN](https://muin.company)
 
 ---
 
-*Stop fighting with ports. Start guarding them.*
+<div align="center">
+
+**Built by [MUIN](https://muin.company)** — *일하는 AI, 누리는 인간*
+
+🔒 Stop fighting with ports. Start guarding them.
+
+</div>
