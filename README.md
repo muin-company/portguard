@@ -34,35 +34,29 @@ $ portguard kill 3000 -y
 
 No memorizing `lsof` flags. No piping through `xargs`. One command.
 
-## Installation
+## Quick Start
+
+```bash
+npx portguard              # See all active ports
+npx portguard kill 3000 -y # Kill whatever's on port 3000
+```
+
+That's it. Or install globally:
 
 ```bash
 npm install -g portguard
 ```
 
-Or run without installing:
+## Usage
 
 ```bash
-npx portguard
-```
-
-## Quick Start
-
-```bash
-# What's using my ports?
-portguard
-
-# What's on port 3000?
-portguard 3000
-
-# Kill it
-portguard kill 3000
-
-# Kill without asking
-portguard kill 3000 -y
-
-# Nuke zombie dev servers
-portguard clean
+portguard                  # List all active ports
+portguard 3000             # Check specific port
+portguard kill 3000        # Kill process on port (with confirmation)
+portguard kill 3000 -y     # Kill without asking
+portguard clean            # Nuke zombie dev servers
+portguard watch            # Live monitoring
+portguard -r 3000-4000     # Scan port range
 ```
 
 ## Examples
@@ -141,20 +135,6 @@ PORT       PID        PROCESS              ADDRESS
 5001       12389      node                 *:5001           NEW!
 ```
 
-## Commands
-
-| Command | Description |
-|---------|-------------|
-| `portguard` | List all active ports |
-| `portguard <port>` | Check specific port |
-| `portguard kill <port>` | Kill process on port |
-| `portguard kill <port> -f` | Force kill (SIGKILL) |
-| `portguard kill <port> -y` | Skip confirmation |
-| `portguard watch` | Continuous monitoring |
-| `portguard watch -i <sec>` | Custom refresh interval |
-| `portguard clean` | Kill zombie dev servers |
-| `portguard -r 3000-4000` | Scan port range |
-
 ## Integration
 
 ### npm scripts
@@ -182,6 +162,18 @@ alias kill3000='portguard kill 3000 -y'
 - name: Clean ports
   run: npx portguard clean -y || true
 ```
+
+## vs Alternatives
+
+| | `portguard` | `lsof -i :3000` | `fkill-cli` | `kill-port` |
+|---|---|---|---|---|
+| List all ports | ✅ One command | Manual parsing | ❌ | ❌ |
+| Kill by port | `kill 3000 -y` | `lsof -ti:3000 \| xargs kill` | ✅ Interactive | ✅ |
+| Port range scan | ✅ | ❌ | ❌ | ❌ |
+| Zombie cleanup | ✅ `clean` | ❌ | ❌ | ❌ |
+| Watch mode | ✅ | ❌ | ❌ | ❌ |
+| Process info (name, uptime) | ✅ | Partial | ✅ | ❌ |
+| Zero config | ✅ | ✅ | ✅ | ✅ |
 
 ## Platform Support
 
