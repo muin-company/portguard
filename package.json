@@ -28,7 +28,12 @@
     "port-conflict",
     "port-management",
     "process-manager",
-    "cleanup"
+    "cleanup",
+    "developer-experience",
+    "dx",
+    "productivity",
+    "address-in-use",
+    "kill-process"
   ],
   "homepage": "https://github.com/muin-company/portguard#readme",
   "author": "muin",

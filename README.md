@@ -198,6 +198,14 @@ alias kill3000='portguard kill 3000 -y'
 
 System processes (root-owned) require `sudo portguard kill <port>`.
 
+## Also From MUIN
+
+Love `portguard`? Check out our other developer CLI tools:
+
+- **[roast-cli](https://www.npmjs.com/package/roast-cli)** — AI code reviews with Gordon Ramsay energy. Brutally honest feedback from your terminal.
+- **[git-why](https://www.npmjs.com/package/git-why)** — AI-powered git history explainer. Understand *why* code exists before you touch it.
+- **[oops](https://www.npmjs.com/package/@mj-muin/oops-cli)** — Pipe any error to AI for instant fixes. When `portguard kill` isn't enough, `oops` diagnoses the real problem.
+
 ## License
 
 MIT © [MUIN](https://muin.company)
