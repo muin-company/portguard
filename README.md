@@ -206,6 +206,10 @@ Love `portguard`? Check out our other developer CLI tools:
 - **[git-why](https://www.npmjs.com/package/git-why)** — AI-powered git history explainer. Understand *why* code exists before you touch it.
 - **[oops](https://www.npmjs.com/package/@mj-muin/oops-cli)** — Pipe any error to AI for instant fixes. When `portguard kill` isn't enough, `oops` diagnoses the real problem.
 
+## Featured On
+
+📰 Read the launch article on Dev.to: **[4 CLI Tools Every Developer Needs (That You've Never Heard Of)](https://dev.to/mjmuin/4-cli-tools-every-developer-needs-that-youve-never-heard-of-318b)**
+
 ## License
 
 MIT © [MUIN](https://muin.company)
