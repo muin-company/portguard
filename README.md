@@ -17,8 +17,6 @@
 
 *List, kill, and guard localhost ports. No more `lsof` gymnastics.*
 
-<img src="demo.gif" alt="portguard demo" width="600"/>
-
 </div>
 
 ---
