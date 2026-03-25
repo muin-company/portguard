@@ -188,6 +188,23 @@ alias kill3000='portguard kill 3000 -y'
 | Process info (name, uptime) | ✅ | Partial | ✅ | ❌ |
 | Zero config | ✅ | ✅ | ✅ | ✅ |
 
+## Security
+
+Open ports are attack surface. Every listening port is a door — if you don't know it's open, you can't defend it.
+
+- **Audit exposed ports** — `portguard` shows exactly what's listening and where. No more mystery services.
+- **Kill rogue processes** — That sketchy process on port 4444? Kill it before someone else finds it.
+- **Dev machine hygiene** — Developers often leave debug servers, database instances, and test APIs running. Each one is a potential entry point on shared networks (coffee shops, coworking spaces).
+- **Post-incident cleanup** — After a crash or failed deploy, `portguard clean` ensures no zombie processes are silently serving traffic.
+
+```bash
+# Quick security audit
+$ portguard
+# → See everything that's listening. If you don't recognize it, kill it.
+```
+
+> **Tip:** Run `portguard` before connecting to public WiFi. Know what's exposed.
+
 ## Platform Support
 
 | Platform | Method |
@@ -205,6 +222,17 @@ Love `portguard`? Check out our other developer CLI tools:
 - **[roast-cli](https://www.npmjs.com/package/roast-cli)** — AI code reviews with Gordon Ramsay energy. Brutally honest feedback from your terminal.
 - **[git-why](https://www.npmjs.com/package/git-why)** — AI-powered git history explainer. Understand *why* code exists before you touch it.
 - **[oops](https://www.npmjs.com/package/@mj-muin/oops-cli)** — Pipe any error to AI for instant fixes. When `portguard kill` isn't enough, `oops` diagnoses the real problem.
+
+## Contributing
+
+Found a bug? Have an idea? PRs welcome.
+
+```bash
+git clone https://github.com/muin-company/portguard.git
+cd portguard
+npm install
+node bin/portguard.js
+```
 
 ## Featured On
 
