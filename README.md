@@ -5,7 +5,8 @@
 **Who's stealing your ports? portguard knows.**
 
 [![npm version](https://img.shields.io/npm/v/portguard?color=green&label=npm)](https://www.npmjs.com/package/portguard)
-[![npm downloads](https://img.shields.io/npm/dm/portguard.svg)](https://www.npmjs.com/package/portguard)
+[![npm downloads/week](https://img.shields.io/npm/dw/portguard.svg)](https://www.npmjs.com/package/portguard)
+[![npm downloads/month](https://img.shields.io/npm/dm/portguard.svg)](https://www.npmjs.com/package/portguard)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Node.js Version](https://img.shields.io/node/v/portguard.svg)](https://nodejs.org)
 
@@ -221,7 +222,7 @@ Love `portguard`? Check out our other developer CLI tools:
 
 - **[roast-cli](https://www.npmjs.com/package/roast-cli)** — AI code reviews with Gordon Ramsay energy. Brutally honest feedback from your terminal.
 - **[git-why](https://www.npmjs.com/package/git-why)** — AI-powered git history explainer. Understand *why* code exists before you touch it.
-- **[oops](https://www.npmjs.com/package/@mj-muin/oops-cli)** — Pipe any error to AI for instant fixes. When `portguard kill` isn't enough, `oops` diagnoses the real problem.
+- **[oops-ai](https://www.npmjs.com/package/oops-ai)** — Pipe any error to AI for instant fixes. When `portguard kill` isn't enough, `oops` diagnoses the real problem.
 
 ## Contributing
 

@@ -40,7 +40,11 @@
     "linux",
     "server",
     "http",
-    "development-server"
+    "development-server",
+    "terminal",
+    "npx",
+    "dev-server",
+    "zombie-process"
   ],
   "homepage": "https://github.com/muin-company/portguard#readme",
   "author": "muin",
